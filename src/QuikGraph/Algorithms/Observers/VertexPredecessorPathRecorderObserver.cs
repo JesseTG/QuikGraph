@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
+using QuikGraph.Utils;
 using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
@@ -19,6 +20,10 @@ namespace QuikGraph.Algorithms.Observers
         IObserver<IVertexPredecessorRecorderAlgorithm<TVertex, TEdge>>
         where TEdge : IEdge<TVertex>
     {
+        private readonly EdgeAction<TVertex, TEdge> _onEdgeDiscovered;
+        private readonly VertexAction<TVertex> _onVertexFinished;
+        private readonly List<TVertex> _endPathVertices;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="VertexPredecessorPathRecorderObserver{TVertex,TEdge}"/> class.
         /// </summary>
@@ -35,6 +40,9 @@ namespace QuikGraph.Algorithms.Observers
             [NotNull] IDictionary<TVertex, TEdge> verticesPredecessors)
         {
             VerticesPredecessors = verticesPredecessors ?? throw new ArgumentNullException(nameof(verticesPredecessors));
+            _onEdgeDiscovered = OnEdgeDiscovered;
+            _onVertexFinished = OnVertexFinished;
+            _endPathVertices = new List<TVertex>(verticesPredecessors.Count);
         }
 
         /// <summary>
@@ -47,7 +55,7 @@ namespace QuikGraph.Algorithms.Observers
         /// Path ending vertices.
         /// </summary>
         [NotNull, ItemNotNull]
-        public ICollection<TVertex> EndPathVertices { get; } = new List<TVertex>();
+        public ICollection<TVertex> EndPathVertices => _endPathVertices;
 
         /// <summary>
         /// Gets all paths.
@@ -57,7 +65,7 @@ namespace QuikGraph.Algorithms.Observers
         [NotNull, ItemNotNull]
         public IEnumerable<IEnumerable<TEdge>> AllPaths()
         {
-            return EndPathVertices
+            return _endPathVertices
                 .Select(vertex =>
                 {
                     if (VerticesPredecessors.TryGetPath(vertex, out IEnumerable<TEdge> path))
@@ -70,17 +78,25 @@ namespace QuikGraph.Algorithms.Observers
         #region IObserver<TAlgorithm>
 
         /// <inheritdoc />
-        public IDisposable Attach(IVertexPredecessorRecorderAlgorithm<TVertex, TEdge> algorithm)
+        IDisposable IObserver<IVertexPredecessorRecorderAlgorithm<TVertex, TEdge>>.Attach(
+            IVertexPredecessorRecorderAlgorithm<TVertex, TEdge> algorithm
+        )
+        {
+            return Attach(algorithm);
+        }
+
+        /// <inheritdoc cref="Attach(QuikGraph.Algorithms.IVertexPredecessorRecorderAlgorithm{TVertex,TEdge})"/>
+        public FinallyScope Attach(IVertexPredecessorRecorderAlgorithm<TVertex, TEdge> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.TreeEdge += OnEdgeDiscovered;
-            algorithm.FinishVertex += OnVertexFinished;
+            algorithm.TreeEdge += _onEdgeDiscovered;
+            algorithm.FinishVertex += _onVertexFinished;
             return Finally(() =>
             {
-                algorithm.TreeEdge -= OnEdgeDiscovered;
-                algorithm.FinishVertex -= OnVertexFinished;
+                algorithm.TreeEdge -= _onEdgeDiscovered;
+                algorithm.FinishVertex -= _onVertexFinished;
             });
         }
 
@@ -103,7 +119,7 @@ namespace QuikGraph.Algorithms.Observers
                     return;
             }
 
-            EndPathVertices.Add(vertex);
+            _endPathVertices.Add(vertex);
         }
     }
 }

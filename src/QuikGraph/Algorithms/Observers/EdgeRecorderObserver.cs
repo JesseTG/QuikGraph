@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
+using QuikGraph.Utils;
 using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
@@ -24,6 +25,7 @@ namespace QuikGraph.Algorithms.Observers
         public EdgeRecorderObserver()
         {
             _edges = new List<TEdge>();
+            _onEdgeDiscovered = OnEdgeDiscovered;
         }
 
         /// <summary>
@@ -36,27 +38,36 @@ namespace QuikGraph.Algorithms.Observers
                 throw new ArgumentNullException(nameof(edges));
 
             _edges = edges.ToList();
+            _onEdgeDiscovered = OnEdgeDiscovered;
         }
 
         [NotNull, ItemNotNull]
-        private readonly IList<TEdge> _edges;
+        private readonly List<TEdge> _edges;
+
+        private readonly EdgeAction<TVertex, TEdge> _onEdgeDiscovered;
 
         /// <summary>
         /// Encountered edges.
         /// </summary>
         [NotNull, ItemNotNull]
-        public IEnumerable<TEdge> Edges => _edges.AsEnumerable();
+        public IEnumerable<TEdge> Edges => _edges;
 
         #region IObserver<TAlgorithm>
 
         /// <inheritdoc />
-        public IDisposable Attach(ITreeBuilderAlgorithm<TVertex, TEdge> algorithm)
+        IDisposable IObserver<ITreeBuilderAlgorithm<TVertex, TEdge>>.Attach(ITreeBuilderAlgorithm<TVertex, TEdge> algorithm)
+        {
+            return Attach(algorithm);
+        }
+
+        /// <inheritdoc cref="Attach(QuikGraph.Algorithms.ITreeBuilderAlgorithm{TVertex,TEdge})"/>
+        public FinallyScope Attach(ITreeBuilderAlgorithm<TVertex, TEdge> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.TreeEdge += OnEdgeDiscovered;
-            return Finally(() => algorithm.TreeEdge -= OnEdgeDiscovered);
+            algorithm.TreeEdge += _onEdgeDiscovered;
+            return Finally(() => algorithm.TreeEdge -= _onEdgeDiscovered);
         }
 
         #endregion

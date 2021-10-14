@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
+using QuikGraph.Utils;
 using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
@@ -18,6 +19,11 @@ namespace QuikGraph.Algorithms.Observers
     public sealed class EdgePredecessorRecorderObserver<TVertex, TEdge> : IObserver<IEdgePredecessorRecorderAlgorithm<TVertex, TEdge>>
         where TEdge : IEdge<TVertex>
     {
+        private readonly EdgeEdgeAction<TVertex, TEdge> _onEdgeDiscovered;
+        private readonly EdgeAction<TVertex, TEdge> _onEdgeFinished;
+        private readonly Func<TEdge, ICollection<TEdge>> _path;
+        private readonly List<TEdge> _endPathEdges;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="EdgePredecessorRecorderObserver{TVertex,TEdge}"/> class.
         /// </summary>
@@ -34,7 +40,10 @@ namespace QuikGraph.Algorithms.Observers
             [NotNull] IDictionary<TEdge, TEdge> edgesPredecessors)
         {
             EdgesPredecessors = edgesPredecessors ?? throw new ArgumentNullException(nameof(edgesPredecessors));
-            EndPathEdges = new List<TEdge>();
+            _endPathEdges = new List<TEdge>();
+            _onEdgeDiscovered = OnEdgeDiscovered;
+            _onEdgeFinished = OnEdgeFinished;
+            _path = Path;
         }
 
         /// <summary>
@@ -47,23 +56,31 @@ namespace QuikGraph.Algorithms.Observers
         /// Path ending edges.
         /// </summary>
         [NotNull]
-        public ICollection<TEdge> EndPathEdges { get; }
+        public ICollection<TEdge> EndPathEdges => _endPathEdges;
 
         #region IObserver<TAlgorithm>
 
         /// <inheritdoc />
-        public IDisposable Attach(IEdgePredecessorRecorderAlgorithm<TVertex, TEdge> algorithm)
+        IDisposable IObserver<IEdgePredecessorRecorderAlgorithm<TVertex, TEdge>>.Attach(
+            IEdgePredecessorRecorderAlgorithm<TVertex, TEdge> algorithm
+        )
+        {
+            return Attach(algorithm);
+        }
+
+        /// <inheritdoc cref="Attach(QuikGraph.Algorithms.IEdgePredecessorRecorderAlgorithm{TVertex,TEdge})"/>
+        public FinallyScope Attach(IEdgePredecessorRecorderAlgorithm<TVertex, TEdge> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.DiscoverTreeEdge += OnEdgeDiscovered;
-            algorithm.FinishEdge += OnEdgeFinished;
+            algorithm.DiscoverTreeEdge += _onEdgeDiscovered;
+            algorithm.FinishEdge += _onEdgeFinished;
 
             return Finally(() =>
             {
-                algorithm.DiscoverTreeEdge -= OnEdgeDiscovered;
-                algorithm.FinishEdge -= OnEdgeFinished;
+                algorithm.DiscoverTreeEdge -= _onEdgeDiscovered;
+                algorithm.FinishEdge -= _onEdgeFinished;
             });
         }
 
@@ -81,7 +98,7 @@ namespace QuikGraph.Algorithms.Observers
             if (startingEdge == null)
                 throw new ArgumentNullException(nameof(startingEdge));
 
-            var path = new List<TEdge> { startingEdge };
+            var path = new List<TEdge>(EdgesPredecessors.Count) { startingEdge };
 
             TEdge currentEdge = startingEdge;
             while (EdgesPredecessors.TryGetValue(currentEdge, out TEdge edge))
@@ -102,7 +119,7 @@ namespace QuikGraph.Algorithms.Observers
         [NotNull, ItemNotNull]
         public IEnumerable<ICollection<TEdge>> AllPaths()
         {
-            return EndPathEdges.Select(Path);
+            return _endPathEdges.Select(_path);
         }
 
         /// <summary>
@@ -166,7 +183,7 @@ namespace QuikGraph.Algorithms.Observers
                 colors[pair.Value] = GraphColor.White;
             }
 
-            return EndPathEdges.Select(edge => MergedPath(edge, colors));
+            return _endPathEdges.Select(edge => MergedPath(edge, colors));
         }
 
         private void OnEdgeDiscovered([NotNull] TEdge edge, [NotNull] TEdge targetEdge)
@@ -188,7 +205,7 @@ namespace QuikGraph.Algorithms.Observers
                     return;
             }
 
-            EndPathEdges.Add(finishedEdge);
+            _endPathEdges.Add(finishedEdge);
         }
     }
 }

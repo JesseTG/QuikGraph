@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
+using QuikGraph.Utils;
 using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
@@ -22,6 +23,7 @@ namespace QuikGraph.Algorithms.Observers
         public VertexRecorderObserver()
         {
             _vertices = new List<TVertex>();
+            _onVertexDiscovered = OnVertexDiscovered;
         }
 
         /// <summary>
@@ -34,27 +36,39 @@ namespace QuikGraph.Algorithms.Observers
                 throw new ArgumentNullException(nameof(vertices));
 
             _vertices = vertices.ToList();
+            _onVertexDiscovered = OnVertexDiscovered;
         }
 
         [NotNull, ItemNotNull]
-        private readonly IList<TVertex> _vertices;
+        private readonly List<TVertex> _vertices;
+
+        [NotNull]
+        private readonly VertexAction<TVertex> _onVertexDiscovered;
 
         /// <summary>
         /// Encountered vertices.
         /// </summary>
         [NotNull, ItemNotNull]
-        public IEnumerable<TVertex> Vertices => _vertices.AsEnumerable();
+        public IEnumerable<TVertex> Vertices => _vertices;
 
         #region IObserver<TAlgorithm>
 
         /// <inheritdoc />
-        public IDisposable Attach(IVertexTimeStamperAlgorithm<TVertex> algorithm)
+        IDisposable IObserver<IVertexTimeStamperAlgorithm<TVertex>>.Attach(
+            IVertexTimeStamperAlgorithm<TVertex> algorithm
+        )
+        {
+            return Attach(algorithm);
+        }
+
+        /// <inheritdoc cref="Attach(QuikGraph.Algorithms.IVertexTimeStamperAlgorithm{TVertex})"/>
+        public FinallyScope Attach(IVertexTimeStamperAlgorithm<TVertex> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.DiscoverVertex += OnVertexDiscovered;
-            return Finally(() => algorithm.DiscoverVertex -= OnVertexDiscovered);
+            algorithm.DiscoverVertex += _onVertexDiscovered;
+            return Finally(() => algorithm.DiscoverVertex -= _onVertexDiscovered);
         }
 
         #endregion

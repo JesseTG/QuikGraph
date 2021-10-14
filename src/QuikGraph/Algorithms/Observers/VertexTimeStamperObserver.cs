@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using JetBrains.Annotations;
+using QuikGraph.Utils;
 using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
@@ -15,6 +16,8 @@ namespace QuikGraph.Algorithms.Observers
 #endif
     public sealed class VertexTimeStamperObserver<TVertex> : IObserver<IVertexTimeStamperAlgorithm<TVertex>>
     {
+        private readonly VertexAction<TVertex> _onVertexDiscovered;
+        private readonly VertexAction<TVertex> _onVertexFinished;
         private int _currentTime;
 
         /// <summary>
@@ -33,6 +36,8 @@ namespace QuikGraph.Algorithms.Observers
         {
             DiscoverTimes = discoverTimes ?? throw new ArgumentNullException(nameof(discoverTimes));
             FinishTimes = null;
+            _onVertexDiscovered = OnVertexDiscovered;
+            _onVertexFinished = OnVertexFinished;
         }
 
         /// <summary>
@@ -46,6 +51,8 @@ namespace QuikGraph.Algorithms.Observers
         {
             DiscoverTimes = discoverTimes ?? throw new ArgumentNullException(nameof(discoverTimes));
             FinishTimes = finishTimes ?? throw new ArgumentNullException(nameof(finishTimes));
+            _onVertexDiscovered = OnVertexDiscovered;
+            _onVertexFinished = OnVertexFinished;
         }
 
         /// <summary>
@@ -63,20 +70,28 @@ namespace QuikGraph.Algorithms.Observers
         #region IObserver<TAlgorithm>
 
         /// <inheritdoc />
-        public IDisposable Attach(IVertexTimeStamperAlgorithm<TVertex> algorithm)
+        IDisposable IObserver<IVertexTimeStamperAlgorithm<TVertex>>.Attach(
+            IVertexTimeStamperAlgorithm<TVertex> algorithm
+        )
+        {
+            return Attach(algorithm);
+        }
+
+        /// <inheritdoc cref="Attach(QuikGraph.Algorithms.IVertexTimeStamperAlgorithm{TVertex})"/>
+        public FinallyScope Attach(IVertexTimeStamperAlgorithm<TVertex> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.DiscoverVertex += OnVertexDiscovered;
+            algorithm.DiscoverVertex += _onVertexDiscovered;
             if (FinishTimes != null)
-                algorithm.FinishVertex += OnVertexFinished;
+                algorithm.FinishVertex += _onVertexFinished;
 
             return Finally(() =>
             {
-                algorithm.DiscoverVertex -= OnVertexDiscovered;
+                algorithm.DiscoverVertex -= _onVertexDiscovered;
                 if (FinishTimes != null)
-                    algorithm.FinishVertex -= OnVertexFinished;
+                    algorithm.FinishVertex -= _onVertexFinished;
             });
         }
 
