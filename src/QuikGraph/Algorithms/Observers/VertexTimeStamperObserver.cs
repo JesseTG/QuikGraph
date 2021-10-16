@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using JetBrains.Annotations;
-using QuikGraph.Utils;
-using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
 {
@@ -78,21 +76,12 @@ namespace QuikGraph.Algorithms.Observers
         }
 
         /// <inheritdoc cref="Attach(QuikGraph.Algorithms.IVertexTimeStamperAlgorithm{TVertex})"/>
-        public FinallyScope Attach(IVertexTimeStamperAlgorithm<TVertex> algorithm)
+        public AttachScope Attach(IVertexTimeStamperAlgorithm<TVertex> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.DiscoverVertex += _onVertexDiscovered;
-            if (FinishTimes != null)
-                algorithm.FinishVertex += _onVertexFinished;
-
-            return Finally(() =>
-            {
-                algorithm.DiscoverVertex -= _onVertexDiscovered;
-                if (FinishTimes != null)
-                    algorithm.FinishVertex -= _onVertexFinished;
-            });
+            return new AttachScope(algorithm, this);
         }
 
         #endregion
@@ -110,6 +99,40 @@ namespace QuikGraph.Algorithms.Observers
 
             // ReSharper disable once PossibleNullReferenceException, Justification: Not null if the handler is attached
             FinishTimes[vertex] = _currentTime++;
+        }
+
+        /// <inheritdoc cref="EdgePredecessorRecorderObserver{TVertex,TEdge}.AttachScope"/>
+        public struct AttachScope : IDisposable
+        {
+            private readonly IVertexTimeStamperAlgorithm<TVertex> _algorithm;
+            private readonly VertexTimeStamperObserver<TVertex> _observer;
+
+            internal AttachScope(
+                IVertexTimeStamperAlgorithm<TVertex> algorithm,
+                VertexTimeStamperObserver<TVertex> observer
+            )
+            {
+                Debug.Assert(algorithm != null);
+                Debug.Assert(observer != null);
+
+                _algorithm = algorithm;
+                _observer = observer;
+
+                algorithm.DiscoverVertex += _observer._onVertexDiscovered;
+                if (observer.FinishTimes != null)
+                    algorithm.FinishVertex += _observer._onVertexFinished;
+            }
+
+            /// <inheritdoc/>
+            public void Dispose()
+            {
+                if (_algorithm != null)
+                {
+                    _algorithm.DiscoverVertex -= _observer._onVertexDiscovered;
+                    if (_observer?.FinishTimes != null)
+                        _algorithm.FinishVertex -= _observer._onVertexFinished;
+                }
+            }
         }
     }
 }

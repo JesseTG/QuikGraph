@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
-using QuikGraph.Utils;
-using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
 {
@@ -61,13 +59,12 @@ namespace QuikGraph.Algorithms.Observers
         }
 
         /// <inheritdoc cref="Attach(QuikGraph.Algorithms.ITreeBuilderAlgorithm{TVertex,TEdge})"/>
-        public FinallyScope Attach(ITreeBuilderAlgorithm<TVertex, TEdge> algorithm)
+        public AttachScope Attach(ITreeBuilderAlgorithm<TVertex, TEdge> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.TreeEdge += _onEdgeDiscovered;
-            return Finally(() => algorithm.TreeEdge -= _onEdgeDiscovered);
+            return new AttachScope(algorithm, this);
         }
 
         #endregion
@@ -77,6 +74,36 @@ namespace QuikGraph.Algorithms.Observers
             Debug.Assert(edge != null);
 
             _edges.Add(edge);
+        }
+
+        /// <inheritdoc cref="EdgePredecessorRecorderObserver{TVertex,TEdge}.AttachScope"/>
+        public struct AttachScope : IDisposable
+        {
+            private readonly ITreeBuilderAlgorithm<TVertex, TEdge> _algorithm;
+            private readonly EdgeRecorderObserver<TVertex, TEdge> _observer;
+
+            internal AttachScope(
+                ITreeBuilderAlgorithm<TVertex, TEdge> algorithm,
+                EdgeRecorderObserver<TVertex, TEdge> observer
+            )
+            {
+                Debug.Assert(algorithm != null);
+                Debug.Assert(observer != null);
+
+                _algorithm = algorithm;
+                _observer = observer;
+
+                _algorithm.TreeEdge += observer._onEdgeDiscovered;
+            }
+
+            /// <inheritdoc/>
+            public void Dispose()
+            {
+                if (_algorithm != null && _observer != null)
+                {
+                    _algorithm.TreeEdge -= _observer._onEdgeDiscovered;
+                }
+            }
         }
     }
 }

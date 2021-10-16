@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
-using QuikGraph.Utils;
-using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
 {
@@ -86,18 +84,12 @@ namespace QuikGraph.Algorithms.Observers
         }
 
         /// <inheritdoc cref="Attach(QuikGraph.Algorithms.IVertexPredecessorRecorderAlgorithm{TVertex,TEdge})"/>
-        public FinallyScope Attach(IVertexPredecessorRecorderAlgorithm<TVertex, TEdge> algorithm)
+        public AttachScope Attach(IVertexPredecessorRecorderAlgorithm<TVertex, TEdge> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.TreeEdge += _onEdgeDiscovered;
-            algorithm.FinishVertex += _onVertexFinished;
-            return Finally(() =>
-            {
-                algorithm.TreeEdge -= _onEdgeDiscovered;
-                algorithm.FinishVertex -= _onVertexFinished;
-            });
+            return new AttachScope(algorithm, this);
         }
 
         #endregion
@@ -120,6 +112,38 @@ namespace QuikGraph.Algorithms.Observers
             }
 
             _endPathVertices.Add(vertex);
+        }
+
+        /// <inheritdoc cref="EdgePredecessorRecorderObserver{TVertex,TEdge}.AttachScope"/>
+        public struct AttachScope : IDisposable
+        {
+            private readonly IVertexPredecessorRecorderAlgorithm<TVertex, TEdge> _algorithm;
+            private readonly VertexPredecessorPathRecorderObserver<TVertex, TEdge> _observer;
+
+            internal AttachScope(
+                IVertexPredecessorRecorderAlgorithm<TVertex, TEdge> algorithm,
+                VertexPredecessorPathRecorderObserver<TVertex, TEdge> observer
+            )
+            {
+                Debug.Assert(algorithm != null);
+                Debug.Assert(observer != null);
+
+                _algorithm = algorithm;
+                _observer = observer;
+
+                _algorithm.TreeEdge += _observer._onEdgeDiscovered;
+                _algorithm.FinishVertex += _observer._onVertexFinished;
+            }
+
+            /// <inheritdoc/>
+            public void Dispose()
+            {
+                if (_algorithm != null && _observer != null)
+                {
+                    _algorithm.TreeEdge -= _observer._onEdgeDiscovered;
+                    _algorithm.FinishVertex -= _observer._onVertexFinished;
+                }
+            }
         }
     }
 }

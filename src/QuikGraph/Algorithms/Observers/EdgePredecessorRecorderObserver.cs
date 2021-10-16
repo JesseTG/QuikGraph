@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
-using QuikGraph.Utils;
-using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
 {
@@ -69,19 +67,12 @@ namespace QuikGraph.Algorithms.Observers
         }
 
         /// <inheritdoc cref="Attach(QuikGraph.Algorithms.IEdgePredecessorRecorderAlgorithm{TVertex,TEdge})"/>
-        public FinallyScope Attach(IEdgePredecessorRecorderAlgorithm<TVertex, TEdge> algorithm)
+        public AttachScope Attach(IEdgePredecessorRecorderAlgorithm<TVertex, TEdge> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.DiscoverTreeEdge += _onEdgeDiscovered;
-            algorithm.FinishEdge += _onEdgeFinished;
-
-            return Finally(() =>
-            {
-                algorithm.DiscoverTreeEdge -= _onEdgeDiscovered;
-                algorithm.FinishEdge -= _onEdgeFinished;
-            });
+            return new AttachScope(algorithm, this);
         }
 
         #endregion
@@ -206,6 +197,43 @@ namespace QuikGraph.Algorithms.Observers
             }
 
             _endPathEdges.Add(finishedEdge);
+        }
+
+        /// <summary>
+        /// Scope for disposing an <see cref="IObserver{TAlgorithm}"/> attachment without allocating closures or boxed
+        /// objects on the heap. You won't need to explicitly instantiate or use this <see langword="struct"/>, use the
+        /// enclosing observer class's <see cref="IObserver{TAlgorithm}.Attach"/> method in a <see langword="using"/>
+        /// statement instead.
+        /// </summary>
+        public struct AttachScope : IDisposable
+        {
+            private readonly IEdgePredecessorRecorderAlgorithm<TVertex, TEdge> _algorithm;
+            private readonly EdgePredecessorRecorderObserver<TVertex, TEdge> _observer;
+
+            internal AttachScope(
+                IEdgePredecessorRecorderAlgorithm<TVertex, TEdge> algorithm,
+                EdgePredecessorRecorderObserver<TVertex, TEdge> observer
+            )
+            {
+                Debug.Assert(algorithm != null);
+                Debug.Assert(observer != null);
+
+                _algorithm = algorithm;
+                _observer = observer;
+
+                _algorithm.DiscoverTreeEdge += _observer._onEdgeDiscovered;
+                _algorithm.FinishEdge += _observer._onEdgeFinished;
+            }
+
+            /// <inheritdoc/>
+            public void Dispose()
+            {
+                if (_algorithm != null && _observer != null)
+                {
+                    _algorithm.DiscoverTreeEdge -= _observer._onEdgeDiscovered;
+                    _algorithm.FinishEdge -= _observer._onEdgeFinished;
+                }
+            }
         }
     }
 }

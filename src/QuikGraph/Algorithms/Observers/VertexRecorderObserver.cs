@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
-using QuikGraph.Utils;
-using static QuikGraph.Utils.DisposableHelpers;
 
 namespace QuikGraph.Algorithms.Observers
 {
@@ -62,13 +60,12 @@ namespace QuikGraph.Algorithms.Observers
         }
 
         /// <inheritdoc cref="Attach(QuikGraph.Algorithms.IVertexTimeStamperAlgorithm{TVertex})"/>
-        public FinallyScope Attach(IVertexTimeStamperAlgorithm<TVertex> algorithm)
+        public AttachScope Attach(IVertexTimeStamperAlgorithm<TVertex> algorithm)
         {
             if (algorithm is null)
                 throw new ArgumentNullException(nameof(algorithm));
 
-            algorithm.DiscoverVertex += _onVertexDiscovered;
-            return Finally(() => algorithm.DiscoverVertex -= _onVertexDiscovered);
+            return new AttachScope(algorithm, this);
         }
 
         #endregion
@@ -78,6 +75,36 @@ namespace QuikGraph.Algorithms.Observers
             Debug.Assert(vertex != null);
 
             _vertices.Add(vertex);
+        }
+
+        /// <inheritdoc cref="EdgePredecessorRecorderObserver{TVertex,TEdge}.AttachScope"/>
+        public struct AttachScope : IDisposable
+        {
+            private readonly IVertexTimeStamperAlgorithm<TVertex> _algorithm;
+            private readonly VertexRecorderObserver<TVertex> _observer;
+
+            internal AttachScope(
+                IVertexTimeStamperAlgorithm<TVertex> algorithm,
+                VertexRecorderObserver<TVertex> observer
+            )
+            {
+                Debug.Assert(algorithm != null);
+                Debug.Assert(observer != null);
+
+                _algorithm = algorithm;
+                _observer = observer;
+
+                _algorithm.DiscoverVertex += _observer._onVertexDiscovered;
+            }
+
+            /// <inheritdoc/>
+            public void Dispose()
+            {
+                if (_algorithm != null && _observer != null)
+                {
+                    _algorithm.DiscoverVertex -= _observer._onVertexDiscovered;
+                }
+            }
         }
     }
 }
